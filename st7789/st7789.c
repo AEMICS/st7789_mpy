@@ -61,10 +61,10 @@ typedef struct _st7789_ST7789_obj_t {
     mp_obj_base_t base;
 
     mp_obj_base_t *spi_obj;
-    uint8_t width;
-    uint8_t height;
-    uint8_t xstart;
-    uint8_t ystart;
+    uint16_t width;
+    uint16_t height;
+    uint16_t xstart;
+    uint16_t ystart;
     mp_hal_pin_obj_t reset;
     mp_hal_pin_obj_t dc;
     mp_hal_pin_obj_t cs;
@@ -100,7 +100,21 @@ STATIC void write_cmd(st7789_ST7789_obj_t *self, uint8_t cmd, const uint8_t *dat
     CS_HIGH()
 }
 
-STATIC void set_window(st7789_ST7789_obj_t *self, uint8_t x0, uint8_t y0, uint8_t x1, uint8_t y1) {
+STATIC void write_cmd_no_end(st7789_ST7789_obj_t *self, uint8_t cmd, const uint8_t *data, int len) {
+    CS_LOW()
+    if (cmd) {
+        DC_LOW();
+        write_spi(self->spi_obj, &cmd, 1);
+    }
+    if (len > 0) {
+        DC_HIGH();
+        write_spi(self->spi_obj, data, len);
+    }
+}
+
+
+
+STATIC void set_window(st7789_ST7789_obj_t *self, uint16_t x0, uint16_t y0, uint16_t x1, uint16_t y1) {
     if (x0 > x1 || x1 >= self->width) {
         return;
     }
@@ -111,45 +125,47 @@ STATIC void set_window(st7789_ST7789_obj_t *self, uint8_t x0, uint8_t y0, uint8_
     uint8_t bufy[4] = {(y0+self->ystart) >> 8, (y0+self->ystart) & 0xFF, (y1+self->ystart) >> 8, (y1+self->ystart) & 0xFF};
     write_cmd(self, ST7789_CASET, bufx, 4);
     write_cmd(self, ST7789_RASET, bufy, 4);
-    write_cmd(self, ST7789_RAMWR, NULL, 0);
+    write_cmd_no_end(self, ST7789_RAMWR, NULL, 0);
 }
 
-STATIC void fill_color_buffer(mp_obj_base_t* spi_obj, uint16_t color, int length) {
-    uint8_t hi = color >> 8, lo = color;
+STATIC void fill_color_buffer(mp_obj_base_t* spi_obj, uint32_t color, uint32_t length) {
+    uint8_t up = color >> 16, hi = color >> 8, lo = color;
     const int buffer_pixel_size = 128;
-    int chunks = length / buffer_pixel_size;
-    int rest = length % buffer_pixel_size;
+    uint32_t chunks = length / buffer_pixel_size;
+    uint32_t rest = length % buffer_pixel_size;
 
-    uint8_t buffer[buffer_pixel_size * 2]; // 128 pixels
+    uint8_t buffer[buffer_pixel_size * 3]; // 128 pixels
     // fill buffer with color data
-    for (int i = 0; i < length && i < buffer_pixel_size; i++) {
-        buffer[i*2] = hi;
-        buffer[i*2 + 1] = lo;
+    for (uint32_t i = 0; i < length && i < buffer_pixel_size; i++) {
+        buffer[i*3] = up;
+        buffer[i*3 + 1] = hi;
+        buffer[i*3 + 2] = lo;
     }
 
     if (chunks) {
-        for (int j = 0; j < chunks; j ++) {
-            write_spi(spi_obj, buffer, buffer_pixel_size*2);
+        for (uint32_t j = 0; j < chunks; j ++) {
+            write_spi(spi_obj, buffer, buffer_pixel_size*3);
         }
     }
     if (rest) {
-        write_spi(spi_obj, buffer, rest*2);
+        write_spi(spi_obj, buffer, rest*3);
     }
 }
 
 
-STATIC void draw_pixel(st7789_ST7789_obj_t *self, uint8_t x, uint8_t y, uint16_t color) {
-    uint8_t hi = color >> 8, lo = color;
+STATIC void draw_pixel(st7789_ST7789_obj_t *self, uint16_t x, uint16_t y, uint32_t color) {
+    uint8_t up = color >> 16, hi = color >> 8, lo = color;
     set_window(self, x, y, x, y);
     DC_HIGH();
     CS_LOW();
+    write_spi(self->spi_obj, &up, 1);
     write_spi(self->spi_obj, &hi, 1);
     write_spi(self->spi_obj, &lo, 1);
     CS_HIGH();
 }
 
 
-STATIC void fast_hline(st7789_ST7789_obj_t *self, uint8_t x, uint8_t y, uint16_t w, uint16_t color) {
+STATIC void fast_hline(st7789_ST7789_obj_t *self, uint16_t x, uint16_t y, uint16_t w, uint32_t color) {
     set_window(self, x, y, x + w - 1, y);
     DC_HIGH();
     CS_LOW();
@@ -158,7 +174,7 @@ STATIC void fast_hline(st7789_ST7789_obj_t *self, uint8_t x, uint8_t y, uint16_t
 }
 
 
-STATIC void fast_vline(st7789_ST7789_obj_t *self, uint8_t x, uint8_t y, uint16_t w, uint16_t color) {
+STATIC void fast_vline(st7789_ST7789_obj_t *self, uint16_t x, uint16_t y, uint16_t w, uint32_t color) {
     set_window(self, x, y, x, y + w - 1);
     DC_HIGH();
     CS_LOW();
@@ -364,7 +380,7 @@ STATIC mp_obj_t st7789_ST7789_blit_buffer(size_t n_args, const mp_obj_t *args) {
     CS_LOW();
 
     const int buf_size = 256;
-    int limit = MIN(buf_info.len, w * h * 2);
+    int limit = MIN(buf_info.len, w * h * 3);
     int chunks = limit / buf_size;
     int rest = limit % buf_size;
     int i = 0;
@@ -387,16 +403,60 @@ STATIC mp_obj_t st7789_ST7789_init(mp_obj_t self_in) {
     st7789_ST7789_soft_reset(self_in);
     write_cmd(self, ST7789_SLPOUT, NULL, 0);
 
-    const uint8_t color_mode[] = { COLOR_MODE_65K | COLOR_MODE_16BIT};
+    const uint8_t color_mode[] = { COLOR_MODE_262K | COLOR_MODE_18BIT};
     write_cmd(self, ST7789_COLMOD, color_mode, 1);
     mp_hal_delay_ms(10);
-    const uint8_t madctl[] = { ST7789_MADCTL_ML | ST7789_MADCTL_RGB };
+    const uint8_t madctl[] = { ST7789_MADCTL_MY | ST7789_MADCTL_BGR };
     write_cmd(self, ST7789_MADCTL, madctl, 1);
+    
+    mp_hal_delay_ms(10);
+    const uint8_t PORCTRK[] = { ST7789_PORCTRK_BPA, ST7789_PORCTRK_FPA, ST7789_PORCTRK_PSEN, ST7789_PORCTRK_BPB | ST7789_PORCTRK_FPB, ST7789_PORCTRK_BPC | ST7789_PORCTRK_FPC };
+    write_cmd(self, ST7789_PORCTRK, PORCTRK, 5);
 
-    write_cmd(self, ST7789_INVON, NULL, 0);
     mp_hal_delay_ms(10);
-    write_cmd(self, ST7789_NORON, NULL, 0);
+    const uint8_t GCTRL[] = { ST7789_GCTRL_VGHS | ST7789_GCTRL_VGLS };
+    write_cmd(self, ST7789_GCTRL, GCTRL, 1);
+
     mp_hal_delay_ms(10);
+    const uint8_t VCOMS[] = { ST7789_VCOMS_VCOMS };
+    write_cmd(self, ST7789_VCOMS, VCOMS, 1);
+
+    mp_hal_delay_ms(10);
+    const uint8_t LCMCTRL[] = { ST7789_LCMCTRL_XBGR | ST7789_LCMCTRL_XMH | ST7789_LCMCTRL_XMV };
+    write_cmd(self, ST7789_LCMCTRL, LCMCTRL, 1);
+
+    mp_hal_delay_ms(10);
+    const uint8_t VDVVRHEN[] = { 0x01, 0xFF };
+    write_cmd(self, ST7789_VDVVRHEN, VDVVRHEN, 2);
+
+    mp_hal_delay_ms(10);
+    const uint8_t VRHS[] = { 0x11 };
+    write_cmd(self, ST7789_VRHS, VRHS, 1);
+
+    mp_hal_delay_ms(10);
+    const uint8_t VDVS[] = { 0x20 };
+    write_cmd(self, ST7789_VDVS, VDVS, 1);
+
+    mp_hal_delay_ms(10);
+    const uint8_t FRCTRL2[] = { 0x0F };
+    write_cmd(self, ST7789_FRCTRL2, FRCTRL2, 1);
+
+    mp_hal_delay_ms(10);
+    const uint8_t PWCTRL1[] = { 0xA4, 0xA1 };
+    write_cmd(self, ST7789_PWCTRL1, PWCTRL1, 2);
+
+    mp_hal_delay_ms(10);
+    const uint8_t PVGAMCTRL[] = { 0xD0, 0x00, 0x05, 0x0E, 0x15, 0x0D, 0x37, 0x43, 0x47, 0x09, 0x15, 0x12, 0x16, 0x19 };
+    write_cmd(self, ST7789_PVGAMCTRL, PVGAMCTRL, 14);
+
+    mp_hal_delay_ms(10);
+    const uint8_t NVGAMCTRL[] = { 0xD0, 0x00, 0x05, 0x0D, 0x0C, 0x06, 0x2D, 0x44, 0x40, 0x0E, 0x1C, 0x18, 0x16, 0x19 };
+    write_cmd(self, ST7789_NVGAMCTRL, NVGAMCTRL, 14);
+
+    //write_cmd(self, ST7789_INVON, NULL, 0);
+    //mp_hal_delay_ms(10);
+    //write_cmd(self, ST7789_NORON, NULL, 0);
+    //mp_hal_delay_ms(10);
 
     const mp_obj_t args[] = {
         self_in,
@@ -580,9 +640,22 @@ STATIC uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3);
 }
 
+STATIC uint32_t colorbgr666(uint8_t r, uint8_t g, uint8_t b) {
+    return ((b & 0xFC) << 16) | ((g & 0xFC) << 8) | ((r & 0xFC));
+}
+
 
 STATIC mp_obj_t st7789_color565(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
     return MP_OBJ_NEW_SMALL_INT(color565(
+        (uint8_t)mp_obj_get_int(r),
+        (uint8_t)mp_obj_get_int(g),
+        (uint8_t)mp_obj_get_int(b)
+    ));
+}
+STATIC MP_DEFINE_CONST_FUN_OBJ_3(st7789_color565_obj, st7789_color565);
+
+STATIC mp_obj_t st7789_colorbgr666(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
+    return MP_OBJ_NEW_SMALL_INT(colorbgr666(
         (uint8_t)mp_obj_get_int(r),
         (uint8_t)mp_obj_get_int(g),
         (uint8_t)mp_obj_get_int(b)
@@ -613,6 +686,27 @@ STATIC void map_bitarray_to_rgb565(uint8_t const *bitarray, uint8_t *buffer, int
     }
 }
 
+STATIC void map_bitarray_to_bgr666(uint8_t const *bitarray, uint8_t *buffer, int length, int width,
+                                  uint16_t color, uint16_t bg_color) {
+    int row_pos = 0;
+    for (int i = 0; i < length; i++) {
+        uint8_t byte = bitarray[i];
+        for (int bi = 7; bi >= 0; bi--) {
+            uint8_t b = byte & (1 << bi);
+            uint16_t cur_color = b ? color : bg_color;
+            *buffer = (cur_color & 0xff00) >> 8;
+            buffer ++;
+            *buffer = cur_color & 0xff;
+            buffer ++;
+
+            row_pos ++;
+            if (row_pos >= width) {
+                row_pos = 0;
+                break;
+            }
+        }
+    }
+}
 
 STATIC mp_obj_t st7789_map_bitarray_to_rgb565(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     enum { ARG_bitarray, ARG_buffer, ARG_width, ARG_color, ARG_bg_color };
