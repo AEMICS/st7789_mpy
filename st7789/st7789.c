@@ -155,12 +155,11 @@ STATIC void fill_color_buffer(mp_obj_base_t* spi_obj, uint32_t color, uint32_t l
 
 STATIC void draw_pixel(st7789_ST7789_obj_t *self, uint16_t x, uint16_t y, uint32_t color) {
     uint8_t up = color >> 16, hi = color >> 8, lo = color;
+    uint8_t buf[3] = {up, hi, lo};
     set_window(self, x, y, x, y);
     DC_HIGH();
     CS_LOW();
-    write_spi(self->spi_obj, &up, 1);
-    write_spi(self->spi_obj, &hi, 1);
-    write_spi(self->spi_obj, &lo, 1);
+    write_spi(self->spi_obj, buf, 3);
     CS_HIGH();
 }
 
@@ -640,9 +639,9 @@ STATIC uint16_t color565(uint8_t r, uint8_t g, uint8_t b) {
     return ((r & 0xF8) << 8) | ((g & 0xFC) << 3) | ((b & 0xF8) >> 3);
 }
 
-STATIC uint32_t colorbgr666(uint8_t r, uint8_t g, uint8_t b) {
-    return ((b & 0xFC) << 16) | ((g & 0xFC) << 8) | ((r & 0xFC));
-}
+//STATIC uint32_t colorbgr666(uint8_t r, uint8_t g, uint8_t b) {
+    //return ((b & 0xFC) << 16) | ((g & 0xFC) << 8) | ((r & 0xFC));
+//}
 
 
 STATIC mp_obj_t st7789_color565(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
@@ -654,14 +653,14 @@ STATIC mp_obj_t st7789_color565(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
 }
 STATIC MP_DEFINE_CONST_FUN_OBJ_3(st7789_color565_obj, st7789_color565);
 
-STATIC mp_obj_t st7789_colorbgr666(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
-    return MP_OBJ_NEW_SMALL_INT(colorbgr666(
-        (uint8_t)mp_obj_get_int(r),
-        (uint8_t)mp_obj_get_int(g),
-        (uint8_t)mp_obj_get_int(b)
-    ));
-}
-STATIC MP_DEFINE_CONST_FUN_OBJ_3(st7789_color565_obj, st7789_color565);
+//STATIC mp_obj_t st7789_colorbgr666(mp_obj_t r, mp_obj_t g, mp_obj_t b) {
+    //return MP_OBJ_NEW_SMALL_INT(colorbgr666(
+        //(uint8_t)mp_obj_get_int(r),
+        //(uint8_t)mp_obj_get_int(g),
+        //(uint8_t)mp_obj_get_int(b)
+    //));
+//}
+//STATIC MP_DEFINE_CONST_FUN_OBJ_3(st7789_color565_obj, st7789_color565);
 
 
 STATIC void map_bitarray_to_rgb565(uint8_t const *bitarray, uint8_t *buffer, int length, int width,
@@ -686,27 +685,27 @@ STATIC void map_bitarray_to_rgb565(uint8_t const *bitarray, uint8_t *buffer, int
     }
 }
 
-STATIC void map_bitarray_to_bgr666(uint8_t const *bitarray, uint8_t *buffer, int length, int width,
-                                  uint16_t color, uint16_t bg_color) {
-    int row_pos = 0;
-    for (int i = 0; i < length; i++) {
-        uint8_t byte = bitarray[i];
-        for (int bi = 7; bi >= 0; bi--) {
-            uint8_t b = byte & (1 << bi);
-            uint16_t cur_color = b ? color : bg_color;
-            *buffer = (cur_color & 0xff00) >> 8;
-            buffer ++;
-            *buffer = cur_color & 0xff;
-            buffer ++;
+//STATIC void map_bitarray_to_bgr666(uint8_t const *bitarray, uint8_t *buffer, int length, int width,
+                                  //uint16_t color, uint16_t bg_color) {
+    //int row_pos = 0;
+    //for (int i = 0; i < length; i++) {
+        //uint8_t byte = bitarray[i];
+        //for (int bi = 7; bi >= 0; bi--) {
+            //uint8_t b = byte & (1 << bi);
+            //uint16_t cur_color = b ? color : bg_color;
+            //*buffer = (cur_color & 0xff00) >> 8;
+            //buffer ++;
+            //*buffer = cur_color & 0xff;
+            //buffer ++;
 
-            row_pos ++;
-            if (row_pos >= width) {
-                row_pos = 0;
-                break;
-            }
-        }
-    }
-}
+            //row_pos ++;
+            //if (row_pos >= width) {
+                //row_pos = 0;
+                //break;
+            //}
+        //}
+    //}
+//}
 
 STATIC mp_obj_t st7789_map_bitarray_to_rgb565(size_t n_args, const mp_obj_t *pos_args, mp_map_t *kw_args) {
     enum { ARG_bitarray, ARG_buffer, ARG_width, ARG_color, ARG_bg_color };

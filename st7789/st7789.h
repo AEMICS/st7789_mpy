@@ -5,6 +5,8 @@
 extern "C" {
 #endif
 
+#define EXPOSE_EXTRA_METHODS
+
 #define ST7789_240x240_XSTART 0
 #define ST7789_240x240_YSTART 0
 #define ST7789_135x240_XSTART 52
@@ -68,13 +70,13 @@ extern "C" {
 #define ST7789_VCOMS_VCOMS   0x2B  // 1.175V
 
 #define ST7789_LCMCTRL 0xC0
-#define ST7789_LCMCTRL_XMY   0x00
+//#define ST7789_LCMCTRL_XMY   0x00
 #define ST7789_LCMCTRL_XBGR  0x20
-#define ST7789_LCMCTRL_XREV  0x00
+//#define ST7789_LCMCTRL_XREV  0x00
 #define ST7789_LCMCTRL_XMH   0x08
 #define ST7789_LCMCTRL_XMV   0x04
-#define ST7789_LCMCTRL_XMX   0x00
-#define ST7789_LCMCTRL_GS    0x00
+//#define ST7789_LCMCTRL_XMX   0x00
+//#define ST7789_LCMCTRL_GS    0x00
 
 #define ST7789_VDVVRHEN 0xC2
 #define ST7789_VRHS     0xC3
@@ -93,8 +95,8 @@ extern "C" {
 // Color definitions
 #define	BLACK   0x000000
 #define	BLUE    0xFC0000
-#define	RED     0x0000FC
 #define	GREEN   0x00FC00
+#define	RED     0x0000FC
 #define YELLOW  0x00FCFC
 #define MAGENTA 0xFC00FC
 #define CYAN    0xFCFC00
